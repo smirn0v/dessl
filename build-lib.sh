@@ -10,4 +10,4 @@ export CGO_LDFLAGS="-isysroot $SDKROOT -arch $ARCH"
 export GOOS=darwin
 export GOARCH="$ARCH"
 
-go build -tags simplified_memory -ldflags=-w -trimpath -v -o "build/libdessl.a" -buildmode c-archive
+go build -ldflags=-w -trimpath -v -o "build/libdessl.a" -buildmode c-archive
