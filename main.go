@@ -1,5 +1,6 @@
 package main
 
+import "C"
 import (
 	"crypto/rsa"
 	"crypto/x509"
@@ -33,6 +34,11 @@ func main() {
 	}
 
 	startDeSSLServer(caPath, keyPath, localPort, proxyHost, proxyPort)
+}
+
+//export c_startDeSSLServer
+func c_startDeSSLServer(certDerPath, keyPemPath *C.char, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int) {
+	startDeSSLServer(C.GoString(certDerPath), C.GoString(keyPemPath), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort))
 }
 
 func startDeSSLServer(certDerPath string, keyPemPath string, localPort int, httpProxyHost string, httpProxyPort int) {
