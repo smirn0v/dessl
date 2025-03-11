@@ -1,0 +1,60 @@
+# https://www.plantuml.com/
+# https://www.plantuml.com/plantuml/png/pLHBRvj04BxlhvXoDtOUXyXIeaJ8jQCw3zMeFPGUrZ2OLM4NBKCJ__koO0BOgv9MgbGVa7UqtsDcFhWjY6igivHze0GpX8mJQi4dggHKI6Iy92NBR8kQvTLD4OgSIuAlkFqYy0M-CG20wpiPQIMYjbmN9zMl_kCuFmM7X2Wl8DVgTG-SckDyEarLoDD45JI_khoyS1psVQ3p8EXXvVlFcsS3REM6rOF829EvFo1f2nRyx6fsWb-geYpISYTQ_5lXWD-rPrUNDRgTqUJck8qv-EkDwwK29QqmJHMy24fWytX__UQ23J5MbiKhQHwI0KAiLNPCwmPoYH8r9uGryXWyh1gAHMWAiT8rSCiBZ419A32DeH0xMHq_AqNWtPsOg5oqRStXev2YI8mehBYCYeJ_m7xNtKrVbmKr5iBEGYUTQumm5ZtbG0ve8QwrC68xhSeSrdoF6ixSMdmXGxtFIIZ907utTSTxUdnSU3xqTnK4EWXaytGE0GrLbbNI36LasOCvlP-ITTSdLbFdinayVHfYHjiyTTLDsye8y5TvxBV50FwBK0ByUIm1_dKm6K1_QUUMfOsaSxdmOGgcDZrppuxNXuSyZWJImcADuatlYpQ7OK_tKf3WnZIOJxTdEb0L3fPF6z_SPHssBtz2rAnY4EOBjsKv6exTs_XSx5Rihq6JwvN_i8PGIK99JZDJWxD6-lrCuo_jU3x6N-jn5rrIRgj7cQM_0000
+@startuml
+!theme materia-outline
+autonumber
+participant WebView [
+    =Android WebView
+    ----
+    ""via https proxy at https://localhost:8443""
+]
+participant MitMHTTPSProxy [
+    =MitMHTTPSProxy
+    ""localhost:8443""
+]
+participant HTTPProxy [
+    =HTTPProxy
+    ""localhost:8080""
+]
+participant Gosuslugi [
+    =Gosuslugi
+    ""gosuslugi.ru""
+]
+WebView -> MitMHTTPSProxy : TLS.ClientHello with SNI=localhost
+MitMHTTPSProxy -> MitMHTTPSProxy : Extract SNI from TLS.ClientHello.\nGenerate Leaf Certificate for SNI based on self signed Root CA
+MitMHTTPSProxy --> WebView : Finish TLS Handshake
+WebView -> WebView : Trust Leaf certificate based on predefined Root CA\nTLS Handshake finished
+group Layer 1. TLS Encryption
+  WebView -> MitMHTTPSProxy : "CONNECT gosuslugi.ru\\r\\n\\r\\n" proxy command
+end
+MitMHTTPSProxy -> HTTPProxy : "CONNECT gosuslugi.ru\\r\\n\\r\\n"
+HTTPProxy --> MitMHTTPSProxy : "200 OK\\r\\n\\r\\n"
+
+group Layer 1. TLS Encryption
+  MitMHTTPSProxy -> WebView : "200 OK\\r\\n\\r\\n"
+  WebView -> MitMHTTPSProxy : TLS.ClientHello with SNI=gosuslugi.ru
+  MitMHTTPSProxy -> MitMHTTPSProxy : Extract SNI from TLS.ClientHello.\nGenerate Leaf Certificate for SNI based on self signed Root CA
+  MitMHTTPSProxy --> WebView : Finish TLS Handshake
+  WebView -> WebView : Trust Leaf certificate based on predefined Root CA\nTLS Handshake finished
+
+  group Layer 2. TLS Encryption
+    WebView -> MitMHTTPSProxy : "GET / HTTP/1.1\\r\\n\\r\\n"
+  end
+end
+
+MitMHTTPSProxy -> HTTPProxy : "GET / HTTP/1.1\\r\\n\\r\\n"
+HTTPProxy -> Gosuslugi : TLS Handshake Initiation via CryptoPro GOST TLS
+Gosuslugi -> HTTPProxy : TLS Handshake Finish
+group Layer 3. GOST TLS Encryption
+  HTTPProxy -> Gosuslugi : "GET / HTTP/1.1\\r\\n\\r\\n"
+  Gosuslugi -> HTTPProxy : "200 OK\\r\\n\\r\\n with HTML content"
+end
+
+HTTPProxy -> MitMHTTPSProxy : "200 OK\\r\\n\\r\\n with HTML content"
+
+group Layer 1. TLS Encryption
+  group Layer 2. TLS Encryption
+    MitMHTTPSProxy -> WebView : "200 OK\\r\\n\\r\\n with HTML content"
+  end
+end
+@enduml
