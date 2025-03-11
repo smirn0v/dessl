@@ -11,3 +11,4 @@ export GOOS=darwin
 export GOARCH="$ARCH"
 
 go build -ldflags=-w -trimpath -v -o "build/libdessl.a" -buildmode c-archive
+clang -I`pwd`/build -L`pwd`/build -o build/dessl ./c_example/main.c -framework CoreFoundation -framework Security -ldessl
