@@ -1,25 +1,32 @@
-# https://www.plantuml.com/
-# https://www.plantuml.com/plantuml/png/pLHBRvj04BxlhvXoDtOUXyXIeaJ8jQCw3zMeFPGUrZ2OLM4NBKCJ__koO0BOgv9MgbGVa7UqtsDcFhWjY6igivHze0GpX8mJQi4dggHKI6Iy92NBR8kQvTLD4OgSIuAlkFqYy0M-CG20wpiPQIMYjbmN9zMl_kCuFmM7X2Wl8DVgTG-SckDyEarLoDD45JI_khoyS1psVQ3p8EXXvVlFcsS3REM6rOF829EvFo1f2nRyx6fsWb-geYpISYTQ_5lXWD-rPrUNDRgTqUJck8qv-EkDwwK29QqmJHMy24fWytX__UQ23J5MbiKhQHwI0KAiLNPCwmPoYH8r9uGryXWyh1gAHMWAiT8rSCiBZ419A32DeH0xMHq_AqNWtPsOg5oqRStXev2YI8mehBYCYeJ_m7xNtKrVbmKr5iBEGYUTQumm5ZtbG0ve8QwrC68xhSeSrdoF6ixSMdmXGxtFIIZ907utTSTxUdnSU3xqTnK4EWXaytGE0GrLbbNI36LasOCvlP-ITTSdLbFdinayVHfYHjiyTTLDsye8y5TvxBV50FwBK0ByUIm1_dKm6K1_QUUMfOsaSxdmOGgcDZrppuxNXuSyZWJImcADuatlYpQ7OK_tKf3WnZIOJxTdEb0L3fPF6z_SPHssBtz2rAnY4EOBjsKv6exTs_XSx5Rihq6JwvN_i8PGIK99JZDJWxD6-lrCuo_jU3x6N-jn5rrIRgj7cQM_0000
 @startuml
-!theme materia-outline
+!theme plain
 autonumber
-participant WebView [
+skinparam BackgroundColor #FFFFFF
+participant WebView order 1[
     =Android WebView
     ----
     ""via https proxy at https://localhost:8443""
 ]
-participant MitMHTTPSProxy [
+participant MitMHTTPSProxy order 2 [
     =MitMHTTPSProxy
     ""localhost:8443""
 ]
-participant HTTPProxy [
+participant HTTPProxy order 3 [
     =HTTPProxy
     ""localhost:8080""
 ]
-participant Gosuslugi [
+participant Gosuslugi order 4 [
     =Gosuslugi
     ""gosuslugi.ru""
 ]
+box "Localhost Communication" #LightBlue
+participant WebView
+participant MitMHTTPSProxy
+participant HTTPProxy
+end box
+box "External Internet Communication" #indianred
+participant Gosuslugi
+end box
 WebView -> MitMHTTPSProxy : TLS.ClientHello with SNI=localhost
 MitMHTTPSProxy -> MitMHTTPSProxy : Extract SNI from TLS.ClientHello.\nGenerate Leaf Certificate for SNI based on self signed Root CA
 MitMHTTPSProxy --> WebView : Finish TLS Handshake
