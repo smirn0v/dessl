@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
     char *httpProxyHost = argv[4];
     int httpProxyPort = atoi(argv[5]);
 
-    c_startDeSSLServer(certDerPath, keyPemPath, localPort, httpProxyHost, httpProxyPort);
-    
+    c_startDeSSLServerWithCertFile(certDerPath, keyPemPath, localPort, httpProxyHost, httpProxyPort);
+
     return 0;
 }
