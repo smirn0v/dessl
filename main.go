@@ -45,20 +45,33 @@ func main() {
 		logger.ContextLogger(nil).Fatalf("failed to read key file %s: %w", keyPath, err)
 	}
 
-	startDeSSLServer(certData, keyData, localPort, proxyHost, proxyPort)
+	startDeSSLServerWithCertData(certData, keyData, localPort, proxyHost, proxyPort)
 }
 
-// func c_startDeSSLServer(certDerPath, keyPemPath *C.char, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int) {
-// 	startDeSSLServer(C.GoString(certDerPath), C.GoString(keyPemPath), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort))
-// }
+//export c_startDeSSLServerWithCertFile
+func c_startDeSSLServerWithCertFile(certDerPath, keyPemPath *C.char, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int) {
+	startDeSSLServerWithCertFile(C.GoString(certDerPath), C.GoString(keyPemPath), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort))
+}
 
 //export c_startDeSSLServer
 func c_startDeSSLServer(certData unsafe.Pointer, certDataSize C.int, keyData unsafe.Pointer, keyDataSize C.int, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int) {
-	startDeSSLServer(C.GoBytes(certData, certDataSize), C.GoBytes(keyData, keyDataSize), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort))
+	startDeSSLServerWithCertData(C.GoBytes(certData, certDataSize), C.GoBytes(keyData, keyDataSize), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort))
 }
 
-func startDeSSLServer(certData []byte, keyData []byte, localPort int, httpProxyHost string, httpProxyPort int) {
-	// func startDeSSLServer(certDerPath string, keyPemPath string, localPort int, httpProxyHost string, httpProxyPort int) {
+func startDeSSLServerWithCertFile(certDerPath string, keyPemPath string, localPort int, httpProxyHost string, httpProxyPort int) {
+	certFactory := tlsutil.NewCertificateFactory()
+
+	rootCert, rootKey, err := certFactory.LoadFromFile(certDerPath, keyPemPath)
+
+	if err != nil {
+		logger.ContextLogger(nil).Errorf("failed to load root cert and key: %v\n", err)
+		return
+	}
+
+	startDeSSLServer(&certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
+}
+
+func startDeSSLServerWithCertData(certData []byte, keyData []byte, localPort int, httpProxyHost string, httpProxyPort int) {
 	certFactory := tlsutil.NewCertificateFactory()
 
 	rootCert, rootKey, err := certFactory.ParseCertificateAndKey(certData, keyData)
@@ -67,6 +80,11 @@ func startDeSSLServer(certData []byte, keyData []byte, localPort int, httpProxyH
 		logger.ContextLogger(nil).Errorf("failed to load root cert and key: %v\n", err)
 		return
 	}
+
+	startDeSSLServer(&certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
+}
+
+func startDeSSLServer(certFactory *tlsutil.CertificateFactory, rootCert *x509.Certificate, rootKey *rsa.PrivateKey, localPort int, httpProxyHost string, httpProxyPort int) {
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
@@ -83,7 +101,7 @@ func startDeSSLServer(certData []byte, keyData []byte, localPort int, httpProxyH
 			logger.ContextLogger(nil).WithError(err).Errorln("failed to accept connection")
 			continue
 		}
-		go handleConnection(conn, rootCert, rootKey, certFactory, httpProxyHost, httpProxyPort)
+		go handleConnection(conn, rootCert, rootKey, *certFactory, httpProxyHost, httpProxyPort)
 	}
 }
 
