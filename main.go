@@ -68,7 +68,7 @@ func startDeSSLServerWithCertFile(certDerPath string, keyPemPath string, localPo
 		return
 	}
 
-	startDeSSLServer(&certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
+	startDeSSLServer(certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
 }
 
 func startDeSSLServerWithCertData(certData []byte, keyData []byte, localPort int, httpProxyHost string, httpProxyPort int) {
@@ -81,10 +81,10 @@ func startDeSSLServerWithCertData(certData []byte, keyData []byte, localPort int
 		return
 	}
 
-	startDeSSLServer(&certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
+	startDeSSLServer(certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
 }
 
-func startDeSSLServer(certFactory *tlsutil.CertificateFactory, rootCert *x509.Certificate, rootKey *rsa.PrivateKey, localPort int, httpProxyHost string, httpProxyPort int) {
+func startDeSSLServer(certFactory tlsutil.CertificateFactory, rootCert *x509.Certificate, rootKey *rsa.PrivateKey, localPort int, httpProxyHost string, httpProxyPort int) {
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
@@ -101,7 +101,7 @@ func startDeSSLServer(certFactory *tlsutil.CertificateFactory, rootCert *x509.Ce
 			logger.ContextLogger(nil).WithError(err).Errorln("failed to accept connection")
 			continue
 		}
-		go handleConnection(conn, rootCert, rootKey, *certFactory, httpProxyHost, httpProxyPort)
+		go handleConnection(conn, rootCert, rootKey, certFactory, httpProxyHost, httpProxyPort)
 	}
 }
 

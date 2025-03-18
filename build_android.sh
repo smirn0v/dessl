@@ -25,13 +25,8 @@ ABIS=(
     "x86_64 amd64 $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android$API_LEVEL-clang"
 )
 
-# export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64
-# export CC=$TOOLCHAIN/bin/aarch64-linux-android$API_LEVEL-clang
-# export CXX=$TOOLCHAIN/bin/aarch64-linux-android$API_LEVEL-clang++
 export CGO_ENABLED=1
 export GOOS=android
-# export CGO_CFLAGS="-I$ANDROID_NDK_HOME/sysroot/usr/include -target aarch64-none-linux-android$API_LEVEL"
-# export CGO_LDFLAGS="-target aarch64-none-linux-android$API_LEVEL"
 
 # Loop through each ABI and build
 for abi in "${ABIS[@]}"; do
@@ -43,12 +38,7 @@ for abi in "${ABIS[@]}"; do
     export CXX="$CC++"
 
     # Build the shared library
-    # go build -buildmode=c-shared -o "build/libdessl_$abi_name.so" main.go
-
     go build -buildmode=c-shared -ldflags="-w -s" -v -o "build/$abi_name/libdessl.so"
 
     echo "Done building for $abi_name."
 done
-
-# Сборка
-# go build -ldflags="-w -s" -v -o "build/libdessl.a"
