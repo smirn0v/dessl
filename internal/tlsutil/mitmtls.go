@@ -101,7 +101,7 @@ func readClientHello(reader io.Reader) (string, []byte, error) {
 	}
 
 	if TLSRecordTypeBase(header[0]) != TLSRecordTypeHandshake {
-		return "", nil, errors.New("not Handshake TLS Record Type")
+		return "", header, errors.New("not Handshake TLS Record Type")
 	}
 
 	recordLength := int(binary.BigEndian.Uint16(header[3:5]))

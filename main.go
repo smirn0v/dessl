@@ -108,22 +108,40 @@ func startDeSSLServer(certFactory tlsutil.CertificateFactory, rootCert *x509.Cer
 func handleConnection(conn net.Conn, rootCert *x509.Certificate, rootKey *rsa.PrivateKey, certFactory tlsutil.CertificateFactory, proxyHost string, proxyPort int) {
 	defer conn.Close()
 
-	tlsConn := tlsutil.NewMitMTLSServer(conn, rootCert, rootKey, certFactory)
 	connectionLogger := logger.ContextLogger(nil).WithFields(logrus.Fields{
 		"remoteAddress": conn.RemoteAddr().String(),
 	})
 
 	connectionLogger.Infoln("New connection accepted")
 
-	err := tlsConn.Handshake()
+	connectPrefix := make([]byte, 7)
+	_, err := io.ReadFull(conn, connectPrefix)
 	if err != nil {
-		connectionLogger.WithError(err).Errorln("Failed to perform Handshake()")
+		connectionLogger.WithError(err).Errorln("Failed to read prefix from accepted connection")
 		return
 	}
 
-	connectionLogger.Infoln("Handshake finished")
+	var inputConn net.Conn = &netutil.PrefixedConn{Conn: conn, Prefix: connectPrefix}
 
-	proxyRequest, err := netutil.ReadUntilDoubleCRLF(tlsConn)
+	if string(connectPrefix) == "CONNECT" {
+		connectionLogger.Infoln("Non HTTPS prefix discovered. HTTP proxy mode")
+	} else {
+
+		connectionLogger.Infoln("Trying SSL handshake on input connection")
+		securedConn := tlsutil.NewMitMTLSServer(inputConn, rootCert, rootKey, certFactory)
+
+		err := securedConn.Handshake()
+		if err != nil {
+			connectionLogger.WithError(err).Errorln("Failed to perform Handshake()")
+			return
+		}
+
+		connectionLogger.Infoln("Handshake finished")
+
+		inputConn = securedConn
+	}
+
+	proxyRequest, err := netutil.ReadUntilDoubleCRLF(inputConn)
 
 	if err != nil {
 		connectionLogger.WithError(err).Errorln("Failed to read proxy request")
@@ -154,12 +172,12 @@ func handleConnection(conn net.Conn, rootCert *x509.Certificate, rootKey *rsa.Pr
 		return
 	}
 
-	if strings.HasPrefix(proxyResponse, "HTTP/1.1 200 OK") {
+	if !strings.HasPrefix(proxyResponse, "HTTP/1.1 200 OK") {
 		connectionLogger.WithField("response", proxyResponse).Errorln("Invalid proxy response")
 		return
 	}
 
-	n, err = tlsConn.Write([]byte(proxyResponse))
+	n, err = inputConn.Write([]byte(proxyResponse))
 	if err != nil || n != len(proxyResponse) {
 		connectionLogger.WithError(err).Errorln("Failed to write proxy response")
 		return
@@ -167,7 +185,7 @@ func handleConnection(conn net.Conn, rootCert *x509.Certificate, rootKey *rsa.Pr
 
 	connectionLogger.Infoln("Enabling internal TLS proxy")
 
-	internalTLSConn := tlsutil.NewMitMTLSServer(tlsConn, rootCert, rootKey, certFactory)
+	internalTLSConn := tlsutil.NewMitMTLSServer(inputConn, rootCert, rootKey, certFactory)
 
 	err = internalTLSConn.Handshake()
 
