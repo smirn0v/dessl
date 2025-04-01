@@ -72,7 +72,11 @@ func startDeSSLServerWithCertFile(certDerPath string, keyPemPath string, localPo
 }
 
 func startDeSSLServerWithCertData(certData []byte, keyData []byte, localPort int, httpProxyHost string, httpProxyPort int) {
-	certFactory := tlsutil.NewCertificateFactory()
+	certFactory, err := tlsutil.NewCachingCertificateFactory("/Users/alexandr.smirnov/", tlsutil.NewCertificateFactory())
+
+	if err != nil {
+		logger.ContextLogger(nil).Errorf("failed to create caching factory: %w", err)
+	}
 
 	rootCert, rootKey, err := certFactory.ParseCertificateAndKey(certData, keyData)
 

@@ -75,14 +75,19 @@ func (serv *MitMTLSServer) Handshake() error {
 		return fmt.Errorf("failed to read ClientHello TLS Packet: %w, bytes '%s'", err, bytesToHexString(prefix))
 	}
 
-	cert, _, err := serv.certFactory.GenerateLeafTLSCert(sni, serv.rootCert, serv.rootKey)
+	x509Cert, key, err := serv.certFactory.GenerateLeafTLSCert(sni, serv.rootCert, serv.rootKey)
 
 	if err != nil {
 		return fmt.Errorf("failed to generate certificate for server name = '%s'. %w", sni, err)
 	}
 
+	tlsCert, err := ConvertToTLSCertificate(x509Cert, key)
+	if err != nil {
+		return fmt.Errorf("failed to convert to tls cert: %w", err)
+	}
+
 	serv.Conn = tls.Server(&netutil.PrefixedConn{Conn: serv.conn, Prefix: prefix}, &tls.Config{
-		Certificates: []tls.Certificate{*cert},
+		Certificates: []tls.Certificate{*tlsCert},
 		NextProtos:   []string{"http/1.1"}, // http/1.1 only for convenience
 	})
 
