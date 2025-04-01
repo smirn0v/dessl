@@ -19,8 +19,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 3 {
-		logger.ContextLogger(nil).Fatalf("Usage: %s <cert.der> <key.pem> <local port> <http proxy host> <http proxy port>", os.Args[0])
+	if len(os.Args) < 7 {
+		logger.ContextLogger(nil).Fatalf("Usage: %s <cert.der> <key.pem> <local port> <http proxy host> <http proxy port> <cache path>", os.Args[0])
 	}
 
 	caPath := os.Args[1]
@@ -35,6 +35,8 @@ func main() {
 		logger.ContextLogger(nil).WithField("proxyPortArg", os.Args[5]).Fatalln("Failed to parse proxy port")
 	}
 
+	cachePath := os.Args[6]
+
 	certData, err := os.ReadFile(caPath)
 	if err != nil {
 		logger.ContextLogger(nil).Fatalf("failed to read cert file %s: %w", caPath, err)
@@ -45,21 +47,25 @@ func main() {
 		logger.ContextLogger(nil).Fatalf("failed to read key file %s: %w", keyPath, err)
 	}
 
-	startDeSSLServerWithCertData(certData, keyData, localPort, proxyHost, proxyPort)
+	startDeSSLServerWithCertData(certData, keyData, localPort, proxyHost, proxyPort, cachePath)
 }
 
 //export c_startDeSSLServerWithCertFile
-func c_startDeSSLServerWithCertFile(certDerPath, keyPemPath *C.char, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int) {
-	startDeSSLServerWithCertFile(C.GoString(certDerPath), C.GoString(keyPemPath), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort))
+func c_startDeSSLServerWithCertFile(certDerPath, keyPemPath *C.char, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int, cachePath *C.char) {
+	startDeSSLServerWithCertFile(C.GoString(certDerPath), C.GoString(keyPemPath), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort), C.GoString(cachePath))
 }
 
 //export c_startDeSSLServer
-func c_startDeSSLServer(certData unsafe.Pointer, certDataSize C.int, keyData unsafe.Pointer, keyDataSize C.int, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int) {
-	startDeSSLServerWithCertData(C.GoBytes(certData, certDataSize), C.GoBytes(keyData, keyDataSize), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort))
+func c_startDeSSLServer(certData unsafe.Pointer, certDataSize C.int, keyData unsafe.Pointer, keyDataSize C.int, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int, cachePath *C.char) {
+	startDeSSLServerWithCertData(C.GoBytes(certData, certDataSize), C.GoBytes(keyData, keyDataSize), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort), C.GoString(cachePath))
 }
 
-func startDeSSLServerWithCertFile(certDerPath string, keyPemPath string, localPort int, httpProxyHost string, httpProxyPort int) {
-	certFactory := tlsutil.NewCertificateFactory()
+func startDeSSLServerWithCertFile(certDerPath string, keyPemPath string, localPort int, httpProxyHost string, httpProxyPort int, cachePath string) {
+	certFactory, err := tlsutil.NewCachingCertificateFactory(cachePath, tlsutil.NewCertificateFactory())
+
+	if err != nil {
+		logger.ContextLogger(nil).Errorf("failed to create caching factory: %w", err)
+	}
 
 	rootCert, rootKey, err := certFactory.LoadFromFile(certDerPath, keyPemPath)
 
@@ -71,8 +77,8 @@ func startDeSSLServerWithCertFile(certDerPath string, keyPemPath string, localPo
 	startDeSSLServer(certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
 }
 
-func startDeSSLServerWithCertData(certData []byte, keyData []byte, localPort int, httpProxyHost string, httpProxyPort int) {
-	certFactory, err := tlsutil.NewCachingCertificateFactory("/Users/alexandr.smirnov/", tlsutil.NewCertificateFactory())
+func startDeSSLServerWithCertData(certData []byte, keyData []byte, localPort int, httpProxyHost string, httpProxyPort int, cachePath string) {
+	certFactory, err := tlsutil.NewCachingCertificateFactory(cachePath, tlsutil.NewCertificateFactory())
 
 	if err != nil {
 		logger.ContextLogger(nil).Errorf("failed to create caching factory: %w", err)
