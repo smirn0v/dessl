@@ -2,23 +2,15 @@ package main
 
 import "C"
 import (
-	"crypto/rsa"
-	"crypto/x509"
+	"desslproxy/internal/dessl"
 	"desslproxy/internal/logger"
-	"desslproxy/internal/netutil"
-	"desslproxy/internal/tlsutil"
-	"fmt"
-	"io"
-	"net"
 	"os"
 	"strconv"
-	"strings"
 	"unsafe"
-
-	"github.com/sirupsen/logrus"
 )
 
 func main() {
+
 	if len(os.Args) < 7 {
 		logger.ContextLogger(nil).Fatalf("Usage: %s <cert.der> <key.pem> <local port> <http proxy host> <http proxy port> <cache path>", os.Args[0])
 	}
@@ -39,179 +31,23 @@ func main() {
 
 	certData, err := os.ReadFile(caPath)
 	if err != nil {
-		logger.ContextLogger(nil).Fatalf("failed to read cert file %s: %w", caPath, err)
+		logger.ContextLogger(nil).Fatalf("failed to read cert file %s: %v", caPath, err)
 	}
 
 	keyData, err := os.ReadFile(keyPath)
 	if err != nil {
-		logger.ContextLogger(nil).Fatalf("failed to read key file %s: %w", keyPath, err)
+		logger.ContextLogger(nil).Fatalf("failed to read key file %s: %v", keyPath, err)
 	}
 
-	startDeSSLServerWithCertData(certData, keyData, localPort, proxyHost, proxyPort, cachePath)
+	dessl.StartDeSSLServerWithCertData(certData, keyData, localPort, proxyHost, proxyPort, cachePath)
 }
 
 //export c_startDeSSLServerWithCertFile
 func c_startDeSSLServerWithCertFile(certDerPath, keyPemPath *C.char, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int, cachePath *C.char) {
-	startDeSSLServerWithCertFile(C.GoString(certDerPath), C.GoString(keyPemPath), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort), C.GoString(cachePath))
+	dessl.StartDeSSLServerWithCertFile(C.GoString(certDerPath), C.GoString(keyPemPath), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort), C.GoString(cachePath))
 }
 
 //export c_startDeSSLServer
 func c_startDeSSLServer(certData unsafe.Pointer, certDataSize C.int, keyData unsafe.Pointer, keyDataSize C.int, localPort C.int, httpProxyHost *C.char, httpProxyPort C.int, cachePath *C.char) {
-	startDeSSLServerWithCertData(C.GoBytes(certData, certDataSize), C.GoBytes(keyData, keyDataSize), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort), C.GoString(cachePath))
-}
-
-func startDeSSLServerWithCertFile(certDerPath string, keyPemPath string, localPort int, httpProxyHost string, httpProxyPort int, cachePath string) {
-	certFactory, err := tlsutil.NewCachingCertificateFactory(cachePath, tlsutil.NewCertificateFactory())
-
-	if err != nil {
-		logger.ContextLogger(nil).Errorf("failed to create caching factory: %w", err)
-	}
-
-	rootCert, rootKey, err := certFactory.LoadFromFile(certDerPath, keyPemPath)
-
-	if err != nil {
-		logger.ContextLogger(nil).Errorf("failed to load root cert and key: %v\n", err)
-		return
-	}
-
-	startDeSSLServer(certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
-}
-
-func startDeSSLServerWithCertData(certData []byte, keyData []byte, localPort int, httpProxyHost string, httpProxyPort int, cachePath string) {
-	certFactory, err := tlsutil.NewCachingCertificateFactory(cachePath, tlsutil.NewCertificateFactory())
-
-	if err != nil {
-		logger.ContextLogger(nil).Errorf("failed to create caching factory: %w", err)
-	}
-
-	rootCert, rootKey, err := certFactory.ParseCertificateAndKey(certData, keyData)
-
-	if err != nil {
-		logger.ContextLogger(nil).Errorf("failed to load root cert and key: %v\n", err)
-		return
-	}
-
-	startDeSSLServer(certFactory, rootCert, rootKey, localPort, httpProxyHost, httpProxyPort)
-}
-
-func startDeSSLServer(certFactory tlsutil.CertificateFactory, rootCert *x509.Certificate, rootKey *rsa.PrivateKey, localPort int, httpProxyHost string, httpProxyPort int) {
-
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", localPort))
-	if err != nil {
-		logger.ContextLogger(nil).Errorf("Failed to listen port: %v\n", err)
-		return
-	}
-	defer ln.Close()
-
-	logger.ContextLogger(nil).WithField("port", localPort).Infoln("Started tcp server")
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			logger.ContextLogger(nil).WithError(err).Errorln("failed to accept connection")
-			continue
-		}
-		go handleConnection(conn, rootCert, rootKey, certFactory, httpProxyHost, httpProxyPort)
-	}
-}
-
-func handleConnection(conn net.Conn, rootCert *x509.Certificate, rootKey *rsa.PrivateKey, certFactory tlsutil.CertificateFactory, proxyHost string, proxyPort int) {
-	defer conn.Close()
-
-	connectionLogger := logger.ContextLogger(nil).WithFields(logrus.Fields{
-		"remoteAddress": conn.RemoteAddr().String(),
-	})
-
-	connectionLogger.Infoln("New connection accepted")
-
-	connectPrefix := make([]byte, 7)
-	_, err := io.ReadFull(conn, connectPrefix)
-	if err != nil {
-		connectionLogger.WithError(err).Errorln("Failed to read prefix from accepted connection")
-		return
-	}
-
-	var inputConn net.Conn = &netutil.PrefixedConn{Conn: conn, Prefix: connectPrefix}
-
-	if string(connectPrefix) == "CONNECT" {
-		connectionLogger.Infoln("Non HTTPS prefix discovered. HTTP proxy mode")
-	} else {
-
-		connectionLogger.Infoln("Trying SSL handshake on input connection")
-		securedConn := tlsutil.NewMitMTLSServer(inputConn, rootCert, rootKey, certFactory)
-
-		err := securedConn.Handshake()
-		if err != nil {
-			connectionLogger.WithError(err).Errorln("Failed to perform Handshake()")
-			return
-		}
-
-		connectionLogger.Infoln("Handshake finished")
-
-		inputConn = securedConn
-	}
-
-	proxyRequest, err := netutil.ReadUntilDoubleCRLF(inputConn)
-
-	if err != nil {
-		connectionLogger.WithError(err).Errorln("Failed to read proxy request")
-		return
-	}
-
-	connectionLogger.WithField("request", proxyRequest).Infoln("Proxy request")
-
-	proxyConn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", proxyHost, proxyPort))
-
-	if err != nil {
-		connectionLogger.WithError(err).WithFields(logrus.Fields{
-			"proxyHost": proxyHost,
-			"proxyPort": proxyPort,
-		}).Errorln("Failed to connect to proxy")
-		return
-	}
-
-	n, err := proxyConn.Write([]byte(proxyRequest))
-	if err != nil || n != len(proxyRequest) {
-		connectionLogger.WithError(err).Errorln("Failed to write proxy request")
-		return
-	}
-
-	proxyResponse, err := netutil.ReadUntilDoubleCRLF(proxyConn)
-	if err != nil {
-		connectionLogger.WithError(err).Errorln("Failed to read proxy response")
-		return
-	}
-
-	if !strings.HasPrefix(proxyResponse, "HTTP/1.1 200 OK") {
-		connectionLogger.WithField("response", proxyResponse).Errorln("Invalid proxy response")
-		return
-	}
-
-	n, err = inputConn.Write([]byte(proxyResponse))
-	if err != nil || n != len(proxyResponse) {
-		connectionLogger.WithError(err).Errorln("Failed to write proxy response")
-		return
-	}
-
-	connectionLogger.Infoln("Enabling internal TLS proxy")
-
-	internalTLSConn := tlsutil.NewMitMTLSServer(inputConn, rootCert, rootKey, certFactory)
-
-	err = internalTLSConn.Handshake()
-
-	if err != nil {
-		connectionLogger.WithError(err).Errorln("Failed to perform internal TLS Handshake")
-		return
-	}
-
-	connectionLogger.Infoln("Internal TLS Handshake finished. Linking connections")
-
-	go wrappedCopy(internalTLSConn, proxyConn, connectionLogger)
-
-	wrappedCopy(proxyConn, internalTLSConn, connectionLogger)
-}
-
-func wrappedCopy(dst net.Conn, src net.Conn, l *logrus.Entry) {
-	wrt, err := io.Copy(dst, src)
-	l.WithField("written", wrt).WithError(err).Infoln("Finished io.Copy()")
+	dessl.StartDeSSLServerWithCertData(C.GoBytes(certData, certDataSize), C.GoBytes(keyData, keyDataSize), int(localPort), C.GoString(httpProxyHost), int(httpProxyPort), C.GoString(cachePath))
 }

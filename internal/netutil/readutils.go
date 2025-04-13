@@ -7,6 +7,17 @@ import (
 	"strings"
 )
 
+type СountingReader struct {
+	R     io.Reader
+	Count int
+}
+
+func (c *СountingReader) Read(p []byte) (int, error) {
+	n, err := c.R.Read(p)
+	c.Count += n
+	return n, err
+}
+
 func ReadUntilDoubleCRLF(r io.Reader) (string, error) {
 	reader := bufio.NewReader(r)
 	var buffer bytes.Buffer

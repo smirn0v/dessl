@@ -87,7 +87,7 @@ func (cf *CachingCertificateFactory) GenerateLeafTLSCert(host string, rootCA *x5
 		if err != nil || (now.Before(cert.NotBefore) || now.After(cert.NotAfter)) {
 			cert, key, err = cf.rootFactory.GenerateLeafTLSCert(targetCN, rootCA, rootKey)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to generate leaf cert: %w")
+				return nil, nil, fmt.Errorf("failed to generate leaf cert: %w", err)
 			}
 			err = saveCertAndKeyToFile(cert, key, cacheFileName)
 			if err != nil {
